@@ -4,28 +4,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>同期スクロール・サイドチャット（Spec A）</title>
-  <link rel="icon" href="data:,">
+  <title>VChatSync</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="styles.css">
 
 </head>
 
 <body>
   <header>
-    <h1>同期スクロール・サイドチャット（動画と時刻同期 / 横移動なし）</h1>
+    <h1>VChatSync</h1>
   </header>
 
   <main>
     <!-- 左：入力コントロール -->
     <aside class="controls stack">
       <div class="stack">
-        <label>元動画（MP4など）</label>
+        <label for="videoFile">元動画（MP4など）</label>
         <input type="file" id="videoFile" accept="video/*" />
         <div class="hint">ローカルファイルのみ。ブラウザ内で処理されます。</div>
       </div>
 
       <div class="stack">
-        <label>コメント（CSV / TSV / JSON いずれか）</label>
+        <label for="commentsInput">コメント（CSV / TSV / JSON いずれか）</label>
         <textarea id="commentsInput"
           placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL)&#10;1.20, はじめまして！, #88d3ff, 司会, 進行役, 🎤&#10;3.00, なるほど, #c07dff, アナリスト, 佐藤, 🧠&#10;5.50, いいね〜, , 観客, 山田, &#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:1.2,&quot;text&quot;:&quot;はじめまして！&quot;,&quot;color&quot;:&quot;#88d3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;進行役&quot;,&quot;avatar&quot;:&quot;🎤&quot;}]"></textarea>
         <div class="row">

@@ -70,11 +70,57 @@ label {
   margin: 8px 0 6px
 }
 
-input[type="file"],
 textarea,
 select,
 button {
   width: 100%
+}
+
+input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(134, 225, 255, 0.25);
+  background: linear-gradient(160deg, rgba(22, 28, 40, 0.95), rgba(12, 17, 26, 0.95));
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+input[type="file"]:hover,
+input[type="file"]:focus {
+  border-color: rgba(134, 225, 255, 0.55);
+  color: var(--ink);
+  box-shadow: 0 0 0 2px rgba(134, 225, 255, 0.18);
+  outline: none;
+}
+
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  margin-right: 14px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 0;
+  background: linear-gradient(135deg, #86e1ff, #4fb4ff);
+  color: #06121c;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="file"]::file-selector-button:hover,
+input[type="file"]::-webkit-file-upload-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(79, 180, 255, 0.35);
+}
+
+input[type="file"]::file-selector-button:active,
+input[type="file"]::-webkit-file-upload-button:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 textarea {
