@@ -5,6 +5,7 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 const video = $('#video');
 const videoFile = $('#videoFile');
 const videoShell = $('.video-shell');
+const videoColumn = $('.video-column');
 
 const commentsInput = $('#commentsInput');
 const parseBtn = $('#parseBtn');
@@ -15,6 +16,8 @@ const chatStatus = $('.chat-status');
 const autoScrollChk = $('#autoScroll');
 const jumpLiveBtn = $('#jumpLive');
 const chatShell = $('.chat-shell');
+const pickupList = $('#pickupList');
+const pickupEmpty = $('#pickupEmpty');
 
 let comments = [];     // {t, text, color?, tag?, name?, avatar?}
 let rendered = false;  // 一度DOMに並べたか
@@ -27,8 +30,18 @@ function formatTime(t) {
   return `${mm}:${ss}`;
 }
 
+function coerceFlag(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const text = String(value).trim();
+  if (!text) return false;
+  const lowered = text.toLowerCase();
+  return ['1', 'true', 't', 'yes', 'y', 'on', 'pickup', 'highlight', 'featured', 'useful', '★', '◎'].includes(lowered);
+}
+
 function syncChatHeight() {
-  if (!videoShell || !chatShell) return;
+  if (!chatShell) return;
 
   if (window.matchMedia('(max-width: 1200px)').matches) {
     chatShell.style.removeProperty('height');
@@ -36,7 +49,10 @@ function syncChatHeight() {
     return;
   }
 
-  const rect = videoShell.getBoundingClientRect();
+  const targetEl = videoColumn || videoShell;
+  if (!targetEl) return;
+
+  const rect = targetEl.getBoundingClientRect();
   if (rect.height > 0) {
     const targetHeight = `${rect.height}px`;
     chatShell.style.height = targetHeight;
@@ -56,7 +72,13 @@ videoFile.addEventListener('change', async (e) => {
 
 video.addEventListener('loadedmetadata', syncChatHeight);
 video.addEventListener('loadeddata', syncChatHeight);
-video.addEventListener('resize', syncChatHeight);
+
+if (window.ResizeObserver) {
+  const layoutObserver = new ResizeObserver(() => requestAnimationFrame(syncChatHeight));
+  if (videoColumn) layoutObserver.observe(videoColumn);
+  if (pickupList) layoutObserver.observe(pickupList);
+  if (videoShell) layoutObserver.observe(videoShell);
+}
 
 // ====== コメントのパース ======
 function normalizeRow(row) {
@@ -72,6 +94,8 @@ function normalizeRow(row) {
   if (r.speaker && !r.name) r.name = r.speaker;
   if (r.name) r.name = String(r.name);
   if (r.avatar) r.avatar = String(r.avatar);
+  const pickupRaw = r.pickup ?? r.featured ?? r.highlight ?? r.pin ?? r.flag;
+  r.pickup = coerceFlag(pickupRaw);
   return r;
 }
 
@@ -84,7 +108,7 @@ function parseComments(txt) {
   }
   const lines = txt.split(/\n+/).filter(l => !l.trim().startsWith('#') && l.trim());
   return lines.map(l => {
-    // CSV or TSV: t, text, color?, tag?
+    // CSV or TSV: t, text, color?, tag?, name?, avatar?, pickup?
     const cells = l.split(/\s*,\s*|\t/);
     const row = {
       t: parseFloat(cells[0]),
@@ -92,7 +116,8 @@ function parseComments(txt) {
       color: cells[2],
       tag: cells[3],
       name: cells[4],
-      avatar: cells[5]
+      avatar: cells[5],
+      pickup: cells[6]
     };
     return normalizeRow(row);
   }).filter(Boolean);
@@ -110,13 +135,13 @@ parseBtn.addEventListener('click', () => {
 });
 
 demoBtn.addEventListener('click', () => {
-  commentsInput.value = `# t, text, color, role, name, avatar
-0.6, みなさん準備いいですか？, #7dd3ff, Host, 司会 つな, 🎤
-2.4, この視点いいですね, #f6a8ff, Analyst, 藍子, 🧠
+  commentsInput.value = `# t, text, color, role, name, avatar, pickup
+0.6, みなさん準備いいですか？, #7dd3ff, Host, 司会 つな, 🎤,
+2.4, この視点いいですね, #f6a8ff, Analyst, 藍子, 🧠, yes
 4.8, うわその発想なかった, #ffd166, Viewer, 佐藤, 🙂
-6.2, 今の解説助かる〜, #9ef2c9, Support, リナ, 🍀
-9.5, 次のステップいきましょう, #86e1ff, Host, 司会 つな, 🎤
-12.4, ここ大事ポイントです, #ffb085, Coach, コウ, 🛠
+6.2, 今の解説助かる〜, #9ef2c9, Support, リナ, 🍀, true
+9.5, 次のステップいきましょう, #86e1ff, Host, 司会 つな, 🎤,
+12.4, ここ大事ポイントです, #ffb085, Coach, コウ, 🛠,
 15.8, なるほどね, #c3f0ff, Viewer, ジョン, 👀`;
 });
 
@@ -144,6 +169,11 @@ function colorWithAlpha(color, alpha) {
 
 function renderChat() {
   chatList.innerHTML = '';
+  if (pickupList) pickupList.innerHTML = '';
+
+  const pickupFragment = document.createDocumentFragment();
+  let pickupCount = 0;
+
   comments.forEach((c, idx) => {
     const accent = c.color || '#86e1ff';
     const accentSoft = colorWithAlpha(accent, 0.2) || 'rgba(134,225,255,0.2)';
@@ -223,7 +253,73 @@ function renderChat() {
     item.appendChild(bubble);
 
     chatList.appendChild(item);
+
+    if (c.pickup && pickupList) {
+      const card = document.createElement('article');
+      card.className = 'pickup-card';
+      card.classList.add('hidden');
+      card.dataset.t = c.t;
+      card.style.borderColor = accentLine;
+      card.style.setProperty('--accent-color', accent);
+      card.style.setProperty('--accent-shadow', colorWithAlpha(accent, 0.35) || 'rgba(79, 180, 255, 0.25)');
+      card.title = 'このコメントの時間へジャンプ';
+
+      const meta = document.createElement('div');
+      meta.className = 'pickup-meta';
+
+      const timeEl = document.createElement('span');
+      timeEl.className = 'pickup-time';
+      timeEl.textContent = formatTime(c.t);
+      timeEl.style.background = colorWithAlpha(accent, 0.28) || 'rgba(134,225,255,0.28)';
+      meta.appendChild(timeEl);
+
+      if (c.tag) {
+        const role = document.createElement('span');
+        role.className = 'pickup-role';
+        role.textContent = c.tag;
+        role.style.borderColor = accentLine;
+        role.style.color = colorWithAlpha(accent, 0.9) || accent;
+        meta.appendChild(role);
+      }
+
+      const text = document.createElement('p');
+      text.className = 'pickup-text';
+      text.textContent = c.text;
+
+      const author = document.createElement('div');
+      author.className = 'pickup-author';
+      author.textContent = name;
+
+      const hint = document.createElement('span');
+      hint.className = 'pickup-hint';
+      hint.textContent = 'クリックでジャンプ';
+      author.appendChild(hint);
+
+      card.appendChild(meta);
+      card.appendChild(text);
+      card.appendChild(author);
+
+      const jumpTime = c.t;
+      card.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        video.currentTime = jumpTime + 0.01;
+        video.play();
+        scrollToCurrent(true);
+      });
+
+      pickupFragment.appendChild(card);
+      pickupCount += 1;
+    }
   });
+
+  if (pickupList) {
+    if (pickupCount) {
+      pickupList.appendChild(pickupFragment);
+      pickupEmpty?.classList.add('hidden');
+    } else {
+      pickupEmpty?.classList.remove('hidden');
+    }
+  }
 
   if (chatStatus) {
     const participantSet = new Set();
@@ -236,6 +332,8 @@ function renderChat() {
 
   rendered = true;
   updateVisibility(video.currentTime);
+  updatePickup(video.currentTime);
+  syncChatHeight();
   if (autoScrollChk.checked) scrollToCurrent(true);
 }
 
@@ -247,6 +345,32 @@ function updateVisibility(now) {
     const tt = Number(el.dataset.t);
     if (now + 0.001 >= tt) el.classList.add('visible');
     else el.classList.remove('visible');
+  }
+}
+
+function updatePickup(now) {
+  if (!pickupList) return;
+  const cards = pickupList.querySelectorAll('.pickup-card');
+  if (!cards.length) return;
+  let latest = null;
+  let upcoming = null;
+  const threshold = now + 0.001;
+  for (const card of cards) {
+    card.classList.remove('active', 'up-next');
+    card.classList.add('hidden');
+    const tt = Number(card.dataset.t ?? 0);
+    if (tt <= threshold) {
+      if (!latest || tt >= Number(latest.dataset.t ?? 0)) latest = card;
+    } else if (!upcoming || tt < Number(upcoming.dataset.t ?? 0)) {
+      upcoming = card;
+    }
+  }
+  if (latest) {
+    latest.classList.remove('hidden');
+    latest.classList.add('active');
+  } else if (upcoming) {
+    upcoming.classList.remove('hidden');
+    upcoming.classList.add('up-next');
   }
 }
 
@@ -269,13 +393,14 @@ function onTimeUpdate() {
   ticking = true;
   requestAnimationFrame(() => {
     updateVisibility(video.currentTime);
+    updatePickup(video.currentTime);
     scrollToCurrent(false);
     ticking = false;
   });
 }
 video.addEventListener('timeupdate', onTimeUpdate);
-video.addEventListener('seeked', () => { updateVisibility(video.currentTime); scrollToCurrent(true); });
-video.addEventListener('play', () => { if (autoScrollChk.checked) scrollToCurrent(true); });
+video.addEventListener('seeked', () => { updateVisibility(video.currentTime); updatePickup(video.currentTime); scrollToCurrent(true); });
+video.addEventListener('play', () => { if (autoScrollChk.checked) scrollToCurrent(true); updatePickup(video.currentTime); });
 
 // ユーザースクロール検知
 let scrollTimeout = null;
