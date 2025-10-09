@@ -27,12 +27,12 @@
       <div class="stack">
         <label for="commentsInput">コメント（CSV / TSV / JSON いずれか）</label>
         <textarea id="commentsInput"
-          placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL)&#10;1.20, はじめまして！, #88d3ff, 司会, 進行役, 🎤&#10;3.00, なるほど, #c07dff, アナリスト, 佐藤, 🧠&#10;5.50, いいね〜, , 観客, 山田, &#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:1.2,&quot;text&quot;:&quot;はじめまして！&quot;,&quot;color&quot;:&quot;#88d3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;進行役&quot;,&quot;avatar&quot;:&quot;🎤&quot;}]"></textarea>
+          placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL), ピックアップ(optional true/false)&#10;1.20, はじめまして！, #88d3ff, 司会, 進行役, 🎤, &#10;3.00, なるほど, #c07dff, アナリスト, 佐藤, 🧠, true&#10;5.50, いいね〜, , 観客, 山田, , yes&#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:1.2,&quot;text&quot;:&quot;はじめまして！&quot;,&quot;color&quot;:&quot;#88d3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;進行役&quot;,&quot;avatar&quot;:&quot;🎤&quot;,&quot;pickup&quot;:true}]"></textarea>
         <div class="row">
           <button id="parseBtn">コメント読み込み</button>
           <button id="demoBtn" title="デモ挿入">デモ挿入</button>
         </div>
-        <div class="hint">最小指定は「t(秒), text」。色やタグ（agent種別など）は任意。</div>
+        <div class="hint">最小指定は「t(秒), text」。色やタグ（agent種別など）は任意。ピックアップは pickup 列に true / yes などを記入。</div>
       </div>
 
       <div class="stack">
@@ -55,8 +55,18 @@
         <span class="stage-chip">CHAT READY</span>
       </div>
       <div class="stage-layout">
-        <div class="video-shell">
-          <video id="video" controls playsinline></video>
+        <div class="video-column">
+          <div class="video-shell">
+            <video id="video" controls playsinline></video>
+          </div>
+          <section class="pickup-area">
+            <div class="pickup-head">
+              <h3>ピックアップ解説</h3>
+              <p class="pickup-sub">重要なコメントや用語の補足をここでチェック</p>
+            </div>
+            <div id="pickupEmpty" class="pickup-empty">ピックアップ対象のコメントはまだありません。</div>
+            <div id="pickupList" class="pickup-list"></div>
+          </section>
         </div>
         <div class="chat-shell">
           <div class="chat-top">
