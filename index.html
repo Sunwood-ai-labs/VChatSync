@@ -27,7 +27,7 @@
       <div class="stack">
         <label for="commentsInput">コメント（CSV / TSV / JSON いずれか）</label>
         <textarea id="commentsInput"
-          placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL), ピックアップ(optional true/false)&#10;1.20, はじめまして！, #88d3ff, 司会, 進行役, 🎤, &#10;3.00, なるほど, #c07dff, アナリスト, 佐藤, 🧠, true&#10;5.50, いいね〜, , 観客, 山田, , yes&#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:1.2,&quot;text&quot;:&quot;はじめまして！&quot;,&quot;color&quot;:&quot;#88d3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;進行役&quot;,&quot;avatar&quot;:&quot;🎤&quot;,&quot;pickup&quot;:true}]"></textarea>
+          placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL), ピックアップ(optional true/false)&#10;0.60, みなさん準備いいですか？ 今日のセッションでは実際のライブ配信を想定して、VChatSyncでコメント同期を試します。, #7dd3ff, 司会, つな, 🎤, &#10;2.40, この視点いいですね。コメント側で解説を拾ってくれるので、後半のまとめがスムーズにできそうです。, #f6a8ff, アナリスト, 藍子, 🧠, true&#10;4.80, なるほどその機能！ ピックアップ欄があるおかげで重要なコメントを逃さずキャプチャできますね。, #ffd166, 観客, 佐藤, 🙂, yes&#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:26.7,&quot;text&quot;:&quot;ここで用語メモ：「カルーセルUI」= 横スワイプや矢印操作で複数カードを切り替える表示形式。SNS広告やチャットボットで多用。&quot;,&quot;color&quot;:&quot;#7dd3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;つな&quot;,&quot;avatar&quot;:&quot;🎤&quot;,&quot;pickup&quot;:true}]"></textarea>
         <div class="row">
           <button id="parseBtn">コメント読み込み</button>
           <button id="demoBtn" title="デモ挿入">デモ挿入</button>
