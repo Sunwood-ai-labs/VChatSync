@@ -11,6 +11,9 @@ const commentsInput = $('#commentsInput');
 const parseBtn = $('#parseBtn');
 const demoBtn = $('#demoBtn');
 
+const stage = $('.stage');
+const stageCaptureArea = $('.stage-layout') || stage;
+const stageChip = $('.stage-chip');
 const chatList = $('#chatList');
 const chatStatus = $('.chat-status');
 const autoScrollChk = $('#autoScroll');
@@ -18,16 +21,63 @@ const jumpLiveBtn = $('#jumpLive');
 const chatShell = $('.chat-shell');
 const pickupList = $('#pickupList');
 const pickupEmpty = $('#pickupEmpty');
+const pickupArea = $('.pickup-area');
+const recordStartBtn = $('#recordStart');
+const recordStopBtn = $('#recordStop');
+const recordSaveBtn = $('#recordSave');
+const recordStatus = $('#recordStatus');
+const tabButtons = $$('.tab-button');
+const tabPanels = $$('.tab-panel');
+const videoTitleEl = $('#videoTitle');
+const videoMetaEl = $('#videoMeta');
 
 let comments = [];     // {t, text, color?, tag?, name?, avatar?}
 let rendered = false;  // 一度DOMに並べたか
 let userScrolling = false; // ユーザーが手でスクロールしているか
+let recorder = null;
+let recordingStream = null;
+let displayStream = null;
+let recordedChunks = [];
+let recordingTimer = null;
+let recordingStartedAt = null;
+let lastRecordingBlob = null;
+let manualCropCleanup = null;
+let currentRecordingNote = '';
+let activeTab = 'settings';
+let currentVideoName = '';
+let currentVideoSize = null;
+let currentVideoURL = null;
 
 function formatTime(t) {
   const s = Math.max(0, Math.floor(t));
   const mm = String(Math.floor(s / 60)).padStart(2, '0');
   const ss = String(s % 60).padStart(2, '0');
   return `${mm}:${ss}`;
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatFileSize(bytes) {
+  if (bytes === undefined || bytes === null) return '';
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex === 0 ? 0 : (size < 10 ? 1 : 0);
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 function coerceFlag(value) {
@@ -46,37 +96,144 @@ function syncChatHeight() {
   if (window.matchMedia('(max-width: 1200px)').matches) {
     chatShell.style.removeProperty('height');
     chatShell.style.removeProperty('max-height');
+    videoColumn?.style.removeProperty('min-height');
     return;
   }
 
-  const targetEl = videoColumn || videoShell;
-  if (!targetEl) return;
-
-  const rect = targetEl.getBoundingClientRect();
-  if (rect.height > 0) {
-    const targetHeight = `${rect.height}px`;
+  const referenceEl = videoColumn || videoShell;
+  if (!referenceEl) return;
+  const children = Array.from(referenceEl.children || []);
+  let total = 0;
+  children.forEach((child) => {
+    total += child.getBoundingClientRect().height;
+  });
+  const styles = getComputedStyle(referenceEl);
+  const gap = parseFloat(styles.rowGap || styles.gap || '0');
+  if (gap && children.length > 1) {
+    total += gap * (children.length - 1);
+  }
+  if (total > 0) {
+    const targetHeight = `${total}px`;
     chatShell.style.height = targetHeight;
     chatShell.style.maxHeight = targetHeight;
+    referenceEl.style.minHeight = targetHeight;
+  } else {
+    chatShell.style.removeProperty('height');
+    chatShell.style.removeProperty('max-height');
+    referenceEl.style.removeProperty('min-height');
   }
+}
+
+function activateTab(name, options = {}) {
+  if (!name) return;
+  const targetId = `tab-${name}`;
+  if (!options.force && activeTab === name) return;
+  activeTab = name;
+
+  tabButtons.forEach((btn) => {
+    const isActive = btn.dataset.tab === name;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+
+  tabPanels.forEach((panel) => {
+    const isActive = panel.id === targetId;
+    panel.classList.toggle('active', isActive);
+    panel.hidden = !isActive;
+  });
+
+  if (name === 'live') {
+    requestAnimationFrame(() => {
+      syncChatHeight();
+      updateVisibility(video.currentTime);
+      updatePickup(video.currentTime);
+    });
+  }
+
+  if (options.focus) {
+    const activeBtn = tabButtons.find((btn) => btn.dataset.tab === name);
+    activeBtn?.focus();
+  }
+}
+
+function updateVideoInfo({ loading = false } = {}) {
+  if (videoTitleEl) {
+    videoTitleEl.textContent = currentVideoName || '動画プレビュー';
+  }
+  if (!videoMetaEl) return;
+
+  if (loading) {
+    videoMetaEl.textContent = '読み込み中…';
+    return;
+  }
+
+  if (!currentVideoName) {
+    videoMetaEl.textContent = 'ファイルを選択するとタイトルが表示されます。';
+    return;
+  }
+
+  const details = [];
+  const { videoWidth, videoHeight, duration } = video;
+  if (videoWidth && videoHeight) {
+    details.push(`${videoWidth}×${videoHeight}`);
+  }
+  if (duration && isFinite(duration)) {
+    details.push(formatDuration(duration * 1000));
+  }
+  if (currentVideoSize !== null) {
+    details.push(formatFileSize(currentVideoSize));
+  }
+
+  videoMetaEl.textContent = details.length ? details.join(' ・ ') : '読み込み済み';
 }
 
 // ====== 入力：動画 ======
 videoFile.addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
-  if (!f) return;
-  const url = URL.createObjectURL(f);
-  video.src = url;
+  if (!f) {
+    if (currentVideoURL) {
+      URL.revokeObjectURL(currentVideoURL);
+      currentVideoURL = null;
+    }
+    currentVideoName = '';
+    currentVideoSize = null;
+    updateVideoInfo();
+    video.removeAttribute('src');
+    video.load();
+    requestAnimationFrame(syncChatHeight);
+    return;
+  }
+
+  if (currentVideoURL) {
+    URL.revokeObjectURL(currentVideoURL);
+    currentVideoURL = null;
+  }
+
+  currentVideoName = f.name || 'ローカル動画';
+  currentVideoSize = typeof f.size === 'number' ? f.size : null;
+  updateVideoInfo({ loading: true });
+
+  currentVideoURL = URL.createObjectURL(f);
+  video.src = currentVideoURL;
   await video.play().catch(() => { });
   requestAnimationFrame(syncChatHeight);
 });
 
-video.addEventListener('loadedmetadata', syncChatHeight);
-video.addEventListener('loadeddata', syncChatHeight);
+function handleLoadedMetadata() {
+  updateVideoInfo();
+  syncChatHeight();
+}
+
+video.addEventListener('loadedmetadata', handleLoadedMetadata);
+video.addEventListener('loadeddata', () => requestAnimationFrame(syncChatHeight));
+video.addEventListener('emptied', () => updateVideoInfo());
 
 if (window.ResizeObserver) {
   const layoutObserver = new ResizeObserver(() => requestAnimationFrame(syncChatHeight));
   if (videoColumn) layoutObserver.observe(videoColumn);
   if (pickupList) layoutObserver.observe(pickupList);
+  if (pickupArea) layoutObserver.observe(pickupArea);
   if (videoShell) layoutObserver.observe(videoShell);
 }
 
@@ -420,6 +577,379 @@ autoScrollChk.addEventListener('change', () => { if (autoScrollChk.checked) scro
 jumpLiveBtn.addEventListener('click', () => scrollToCurrent(true));
 window.addEventListener('resize', () => requestAnimationFrame(syncChatHeight));
 
+// ====== 録画機能 ======
+function getSupportedMimeType() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4;codecs=h264,aac'
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || '';
+}
+
+function canUseManualCrop() {
+  return typeof window !== 'undefined'
+    && 'MediaStreamTrackProcessor' in window
+    && 'MediaStreamTrackGenerator' in window
+    && 'VideoFrame' in window
+    && typeof TransformStream === 'function';
+}
+
+function createManualCropTrack(videoTrack) {
+  if (!canUseManualCrop() || !stageCaptureArea) return null;
+  const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+  const generator = new MediaStreamTrackGenerator({ kind: 'video' });
+  const abortController = new AbortController();
+
+  const transformer = new TransformStream({
+    transform(frame, controller) {
+      const enqueueFallback = () => {
+        try {
+          const duplicate = typeof frame.clone === 'function' ? frame.clone() : new VideoFrame(frame);
+          controller.enqueue(duplicate);
+        } catch (cloneErr) {
+          console.error('failed to clone frame for fallback', cloneErr);
+        }
+      };
+
+      try {
+        if (!stageCaptureArea?.isConnected) {
+          enqueueFallback();
+          return;
+        }
+        const rect = stageCaptureArea.getBoundingClientRect();
+        if (!rect || rect.width < 2 || rect.height < 2) {
+          enqueueFallback();
+          return;
+        }
+
+        const displayWidth = frame.displayWidth || frame.codedWidth || videoTrack.getSettings()?.width || 1;
+        const displayHeight = frame.displayHeight || frame.codedHeight || videoTrack.getSettings()?.height || 1;
+        const viewport = window.visualViewport;
+        const viewportWidth = viewport?.width ?? window.innerWidth ?? 1;
+        const viewportHeight = viewport?.height ?? window.innerHeight ?? 1;
+        const viewportOffsetX = viewport?.offsetLeft ?? 0;
+        const viewportOffsetY = viewport?.offsetTop ?? 0;
+        const dpr = window.devicePixelRatio || 1;
+
+        const approxTabWidth = Math.round(viewportWidth * dpr);
+        const approxTabHeight = Math.round(viewportHeight * dpr);
+        const looksLikeTabCapture =
+          Math.abs(displayWidth - approxTabWidth) <= displayWidth * 0.12 &&
+          Math.abs(displayHeight - approxTabHeight) <= displayHeight * 0.12;
+
+        let baseWidth = window.screen?.width || viewportWidth;
+        let baseHeight = window.screen?.height || viewportHeight;
+        let originLeft = (window.screenX ?? window.screenLeft ?? 0) + rect.left;
+        let originTop = (window.screenY ?? window.screenTop ?? 0) + rect.top;
+
+        if (looksLikeTabCapture) {
+          baseWidth = viewportWidth;
+          baseHeight = viewportHeight;
+          originLeft = rect.left + viewportOffsetX;
+          originTop = rect.top + viewportOffsetY;
+        }
+
+        const ratioX = baseWidth > 0 ? displayWidth / baseWidth : 1;
+        const ratioY = baseHeight > 0 ? displayHeight / baseHeight : 1;
+
+        let cropX = Math.max(0, Math.floor(originLeft * ratioX));
+        let cropY = Math.max(0, Math.floor(originTop * ratioY));
+        let cropWidth = Math.max(1, Math.round(rect.width * ratioX));
+        let cropHeight = Math.max(1, Math.round(rect.height * ratioY));
+
+        if (cropX + cropWidth > displayWidth) cropWidth = displayWidth - cropX;
+        if (cropY + cropHeight > displayHeight) cropHeight = displayHeight - cropY;
+
+        if (cropWidth < 2 || cropHeight < 2) {
+          enqueueFallback();
+          return;
+        }
+
+        const cropped = new VideoFrame(frame, {
+          visibleRect: { x: cropX, y: cropY, width: cropWidth, height: cropHeight },
+          timestamp: frame.timestamp,
+          duration: frame.duration
+        });
+        controller.enqueue(cropped);
+      } catch (err) {
+        console.warn('manual crop transform failed, outputting full frame', err);
+        enqueueFallback();
+      } finally {
+        frame.close();
+      }
+    }
+  });
+
+  processor.readable
+    .pipeThrough(transformer)
+    .pipeTo(generator.writable, { signal: abortController.signal })
+    .catch((err) => {
+      if (err?.name !== 'AbortError') console.error('manual crop pipeline error', err);
+    });
+
+  const cleanup = () => {
+    abortController.abort();
+    try { generator.stop?.(); } catch (err) { if (err?.name !== 'InvalidStateError') console.warn('generator stop failed', err); }
+  };
+
+  return { track: generator, stop: cleanup };
+}
+
+function clearRecordingTimer() {
+  if (recordingTimer) {
+    clearInterval(recordingTimer);
+    recordingTimer = null;
+  }
+}
+
+function updateRecordingUI(state, message) {
+  if (!recordStatus) return;
+  if (typeof message === 'string') recordStatus.textContent = message;
+  recordStatus.classList.toggle('recording', state === 'recording');
+}
+
+function setStageChipRecording(active) {
+  if (!stageChip) return;
+  if (active) {
+    stageChip.textContent = 'REC';
+    stageChip.classList.add('recording');
+  } else {
+    stageChip.textContent = 'CHAT READY';
+    stageChip.classList.remove('recording');
+  }
+}
+
+function cleanupRecordingStreams() {
+  if (typeof manualCropCleanup === 'function') {
+    try { manualCropCleanup(); } catch (err) { console.warn('manual crop cleanup failed', err); }
+  }
+  manualCropCleanup = null;
+  displayStream?.getTracks().forEach((track) => track.stop());
+  recordingStream?.getTracks().forEach((track) => track.stop());
+  displayStream = null;
+  recordingStream = null;
+  if (!recorder) currentRecordingNote = '';
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    alert('このブラウザでは画面録画に対応していません。Chrome / Edge の最新バージョンを利用してください。');
+    return;
+  }
+  if (recorder) return;
+
+  activateTab('live');
+
+  if (recordStartBtn) recordStartBtn.disabled = true;
+  if (recordStopBtn) recordStopBtn.disabled = true;
+  recordSaveBtn?.classList.add('hidden');
+  recordSaveBtn?.setAttribute('disabled', 'true');
+  lastRecordingBlob = null;
+  recordedChunks = [];
+
+  let localDisplayStream = null;
+  try {
+    localDisplayStream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        frameRate: 30,
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        logicalSurface: true,
+        displaySurface: 'browser'
+      },
+      audio: false
+    });
+  } catch (err) {
+    console.warn('display capture cancelled or failed', err);
+    updateRecordingUI('idle', '録画は開始されませんでした（キャンセルされました）。');
+    if (recordStartBtn) recordStartBtn.disabled = false;
+    return;
+  }
+
+  const videoTrack = localDisplayStream.getVideoTracks()[0];
+  if (!videoTrack) {
+    localDisplayStream.getTracks().forEach((track) => track.stop());
+    updateRecordingUI('idle', '画面の映像トラックを取得できませんでした。');
+    if (recordStartBtn) recordStartBtn.disabled = false;
+    return;
+  }
+
+  let cropApplied = false;
+  const cropSource = stageCaptureArea || stage;
+  if (typeof videoTrack.cropTo === 'function' && window.CropTarget?.fromElement && cropSource) {
+    try {
+      const target = await window.CropTarget.fromElement(cropSource);
+      await videoTrack.cropTo(target);
+      cropApplied = true;
+    } catch (cropErr) {
+      console.warn('cropTo is not available or failed', cropErr);
+    }
+  }
+
+  let finalVideoTrack = videoTrack;
+  if (!cropApplied) {
+    const manual = createManualCropTrack(videoTrack);
+    if (manual?.track) {
+      finalVideoTrack = manual.track;
+      manualCropCleanup = manual.stop;
+      cropApplied = true;
+    }
+  }
+
+  currentRecordingNote = cropApplied ? '（ライブビュー領域のみ）' : '（共有した映像全体）';
+
+  displayStream = localDisplayStream;
+  recordingStream = new MediaStream([finalVideoTrack]);
+
+  const displayAudio = localDisplayStream.getAudioTracks();
+  if (displayAudio.length) {
+    displayAudio.forEach((track) => recordingStream.addTrack(track));
+  } else if (typeof video.captureStream === 'function') {
+    try {
+      const videoStream = video.captureStream();
+      videoStream.getAudioTracks().forEach((track) => recordingStream.addTrack(track));
+    } catch (audioErr) {
+      console.warn('failed to attach video audio track', audioErr);
+    }
+  }
+
+  const options = {};
+  const supported = getSupportedMimeType();
+  if (supported) options.mimeType = supported;
+
+  try {
+    recorder = new MediaRecorder(recordingStream, options);
+  } catch (err) {
+    console.error('Failed to create MediaRecorder with options, retrying without options', err);
+    try {
+      recorder = new MediaRecorder(recordingStream);
+    } catch (fatal) {
+      console.error('MediaRecorder creation failed', fatal);
+      cleanupRecordingStreams();
+      updateRecordingUI('idle', 'MediaRecorder を初期化できませんでした。');
+      if (recordStartBtn) recordStartBtn.disabled = false;
+      return;
+    }
+  }
+
+  recorder.addEventListener('dataavailable', (ev) => {
+    if (ev.data && ev.data.size > 0) recordedChunks.push(ev.data);
+  });
+  recorder.addEventListener('stop', handleRecorderStop, { once: true });
+  recorder.addEventListener('error', (ev) => {
+    console.error('MediaRecorder error', ev.error ?? ev);
+    stopRecording(true);
+  }, { once: true });
+
+  try {
+    recorder.start(1000);
+  } catch (err) {
+    console.error('MediaRecorder failed to start', err);
+    cleanupRecordingStreams();
+    recorder = null;
+    updateRecordingUI('idle', '録画を開始できませんでした。');
+    if (recordStartBtn) recordStartBtn.disabled = false;
+    return;
+  }
+
+  recordingStartedAt = Date.now();
+  const recordingSuffix = currentRecordingNote ?? '';
+  updateRecordingUI('recording', `録画中 00:00…${recordingSuffix}`);
+  clearRecordingTimer();
+  recordingTimer = setInterval(() => {
+    if (!recordingStartedAt) return;
+    const elapsed = Date.now() - recordingStartedAt;
+    updateRecordingUI('recording', `録画中 ${formatDuration(elapsed)}…${recordingSuffix}`);
+  }, 500);
+
+  if (recordStopBtn) recordStopBtn.disabled = false;
+  setStageChipRecording(true);
+
+  videoTrack.addEventListener('ended', () => stopRecording(true), { once: true });
+  if (finalVideoTrack !== videoTrack) {
+    finalVideoTrack.addEventListener('ended', () => stopRecording(true), { once: true });
+  }
+}
+
+function stopRecording(triggeredByTrackEnd = false) {
+  if (!recorder) {
+    cleanupRecordingStreams();
+    return;
+  }
+  if (recordStopBtn) recordStopBtn.disabled = true;
+  clearRecordingTimer();
+  updateRecordingUI('idle', triggeredByTrackEnd ? '録画を終了しました。' : '録画を停止中…');
+  try {
+    recorder.stop();
+  } catch (err) {
+    console.error('MediaRecorder stop failed', err);
+  }
+  cleanupRecordingStreams();
+}
+
+function handleRecorderStop() {
+  const chunks = recordedChunks.slice();
+  recorder = null;
+  clearRecordingTimer();
+  setStageChipRecording(false);
+  if (recordStopBtn) recordStopBtn.disabled = true;
+
+  if (chunks.length) {
+    const mimeType = chunks[0]?.type || getSupportedMimeType() || 'video/webm';
+    lastRecordingBlob = new Blob(chunks, { type: mimeType });
+    recordSaveBtn?.classList.remove('hidden');
+    recordSaveBtn?.removeAttribute('disabled');
+    const duration = recordingStartedAt ? Date.now() - recordingStartedAt : 0;
+    const note = currentRecordingNote ? ` ${currentRecordingNote}` : '';
+    updateRecordingUI('ready', `録画が完了しました（${formatDuration(duration)}）。「録画を保存」でダウンロードできます。${note}`);
+  } else {
+    lastRecordingBlob = null;
+    recordSaveBtn?.classList.add('hidden');
+    recordSaveBtn?.setAttribute('disabled', 'true');
+    updateRecordingUI('idle', '録画データは保存されませんでした。');
+  }
+
+  recordingStartedAt = null;
+  recordedChunks = [];
+  currentRecordingNote = '';
+  if (recordStartBtn) recordStartBtn.disabled = false;
+}
+
+function saveRecording() {
+  if (!lastRecordingBlob) return;
+  const url = URL.createObjectURL(lastRecordingBlob);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `VChatSync-${stamp}.webm`;
+  document.body.appendChild(a);
+  a.click();
+  requestAnimationFrame(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+  updateRecordingUI('ready', '録画ファイルを保存しました。必要であれば再度ダウンロードできます。');
+}
+
+recordStartBtn?.addEventListener('click', startRecording);
+recordStopBtn?.addEventListener('click', () => stopRecording(false));
+recordSaveBtn?.addEventListener('click', saveRecording);
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => activateTab(btn.dataset.tab, { focus: false }));
+});
+
+tabPanels.forEach((panel) => {
+  panel.hidden = panel.id !== 'tab-settings';
+});
+activateTab('settings', { force: true });
+
 // 初期：空チャットを出しておく
 renderChat();
 syncChatHeight();
+updateVideoInfo();
