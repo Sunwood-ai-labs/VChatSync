@@ -35,11 +35,51 @@ header h1 {
 }
 
 main {
-  display: grid;
-  grid-template-columns: minmax(300px, 360px) 1fr;
-  gap: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
   padding: var(--gap);
-  align-items: start;
+  align-items: stretch;
+}
+
+.tab-strip {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 6px;
+  background: rgba(12, 16, 24, 0.9);
+  border: 1px solid rgba(134, 225, 255, 0.24);
+  border-radius: 999px;
+  padding: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+.tab-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, rgba(134, 225, 255, 0.22), rgba(134, 225, 255, 0.1));
+  color: #f1f5f9;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
 }
 
 aside.controls {
@@ -47,9 +87,8 @@ aside.controls {
   border: 1px solid var(--panelBorder);
   border-radius: 14px;
   padding: 16px;
-  position: sticky;
-  top: var(--gap);
-  height: fit-content;
+  position: static;
+  width: 100%;
 }
 
 section.stage {
@@ -60,7 +99,7 @@ section.stage {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: 100%;
+  width: 100%;
 }
 
 label {
@@ -194,11 +233,50 @@ button:disabled {
   letter-spacing: .08em;
 }
 
+.stage-chip.recording {
+  background: rgba(248, 113, 113, 0.18);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.38);
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.4);
+}
+
+.record-controls {
+  background: rgba(10, 14, 22, 0.65);
+  border: 1px solid rgba(134, 225, 255, 0.2);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.record-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.record-buttons button {
+  width: auto;
+  flex: none;
+  min-width: 112px;
+}
+
+.record-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.record-status.recording {
+  color: #f87171;
+}
+
 .stage-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+  display: flex;
   gap: 18px;
   align-items: stretch;
+  width: 100%;
 }
 
 .video-column {
@@ -206,6 +284,33 @@ button:disabled {
   flex-direction: column;
   gap: 18px;
   min-height: 0;
+  min-width: 360px;
+  flex: 0 0 auto;
+  width: clamp(360px, 60%, calc(100% - 320px));
+  overflow: hidden;
+  resize: horizontal;
+}
+
+.video-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.video-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f3f7ff;
+  text-transform: none;
+}
+
+.video-meta {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(203, 213, 225, 0.8);
+  letter-spacing: 0.04em;
 }
 
 .video-shell {
@@ -221,6 +326,7 @@ button:disabled {
   justify-content: center;
   box-shadow: 0 24px 60px rgba(7, 12, 20, 0.35);
   resize: vertical;
+  flex: 0 0 auto;
 }
 
 video {
@@ -240,6 +346,11 @@ video {
   flex-direction: column;
   gap: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 18px 40px rgba(6, 12, 26, 0.35);
+  flex: 0 0 auto;
+  min-height: 220px;
+  max-height: 70vh;
+  resize: vertical;
+  overflow: auto;
 }
 
 .pickup-head h3 {
@@ -269,6 +380,7 @@ video {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding-right: 4px;
 }
 
 .pickup-card {
@@ -376,6 +488,8 @@ video {
   height: 100%;
   min-height: 360px;
   max-height: none;
+  min-width: 320px;
+  flex: 1 1 320px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 40px rgba(6, 10, 20, 0.4);
 }
 
@@ -570,30 +684,35 @@ video {
 }
 
 @media (max-width: 1200px) {
-  main {
-    grid-template-columns: 1fr;
-  }
-
-  aside.controls {
-    position: static;
-  }
-
   .stage-layout {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .video-column {
     gap: 16px;
+    resize: none;
+    width: 100%;
+    max-width: 100%;
+    flex: none;
+  }
+  .video-title {
+    font-size: 22px;
   }
 
   .pickup-area {
     order: 2;
+    flex: none;
+    min-height: auto;
+    max-height: none;
+    resize: none;
   }
 
   .chat-shell {
     height: auto;
     min-height: 320px;
     max-height: none;
+    min-width: 0;
+    flex: none;
   }
 }
 
