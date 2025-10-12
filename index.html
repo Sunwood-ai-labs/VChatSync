@@ -1,58 +1,106 @@
 <!doctype html>
 <html lang="ja">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>同期スクロール・サイドチャット（Spec A）</title>
-  <link rel="icon" href="data:,">
-  <style>
-    :root {
-      --gap: 12px;
-      --bg: #0f1115;
-      --ink: #e5e7eb;
-      --muted: #9aa0a6;
-      --panel: #0d1016;
-      --panelBorder: #202532;
-      --accent: #86e1ff;
-      --chip: #1f2937;
-    }
-    * { box-sizing: border-box }
-    body { margin: 0; background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
-    header { padding: 16px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 16px }
-    header h1 { font-size: 18px; margin: 0; font-weight: 700 }
+  <title>VChatSync</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
 
-    main { display: grid; grid-template-columns: 360px 1fr 340px; gap: var(--gap); padding: var(--gap); }
-    aside.controls, aside.chat { background: var(--panel); border: 1px solid var(--panelBorder); border-radius: 14px; padding: 12px; }
-    section.stage { background: var(--panel); border: 1px solid var(--panelBorder); border-radius: 14px; padding: 12px; display: grid; grid-template-rows: auto 1fr; gap: 8px }
-    label { font-size: 12px; color: var(--muted); display: block; margin: 8px 0 6px }
-    input[type="file"], textarea, select, button { width: 100% }
-    textarea { min-height: 140px; resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid #2a2f3a; background: #12151b; color: var(--ink) }
-    button { background: #1a73e8; color: #fff; border: 0; padding: 10px 12px; border-radius: 10px; font-weight: 600; cursor: pointer }
-    button:disabled { opacity: .5; cursor: not-allowed }
-    .row { display: flex; gap: 8px; align-items: center }
-    .hint { font-size: 12px; color: var(--muted) }
-    .stack { display: flex; flex-direction: column; gap: 10px }
-    video { width: 100%; max-height: 65vh; background: #000; border-radius: 10px }
-
-    /* --- chat --- */
-    .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px }
-    .chip { font-size: 12px; padding: 4px 8px; border-radius: 999px; background: var(--chip); color: #cbd5e1 }
-    .chat-list { height: calc(100vh - 220px); overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px }
-    .item { display: grid; grid-template-columns: 58px 1fr; gap: 8px; padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); opacity: .45; transition: opacity .15s ease }
-    .item.visible { opacity: 1 }
-    .item .t { font-variant-numeric: tabular-nums; color: #aab1b8; font-size: 12px }
-    .item .text { line-height: 1.35 }
-    .item .meta { display:flex; gap:6px; align-items:center }
-    .seek { color: var(--accent); font-size: 12px; cursor: pointer; text-decoration: none; }
-    .badge { background: #0b1220; border: 1px solid #1e293b; padding: 2px 6px; border-radius: 999px; font-size: 11px; color: #cde7ff }
-
-    .controls-row { display:flex; gap:10px; align-items:center; justify-content: space-between }
-    .checkbox { display:flex; gap:6px; align-items:center; font-size:12px; color: var(--muted) }
-  </style>
 </head>
+
 <body>
   <header>
-    <h1>同期スクロール・サイドチャット（動画と時刻同期 / 横移動なし）</h1>
+    <h1>VChatSync</h1>
   </header>
+
+  <main>
+    <nav class="tab-strip" role="tablist" aria-label="ビュー切り替え">
+      <button type="button" class="tab-button active" id="tab-btn-settings" data-tab="settings" role="tab"
+        aria-selected="true" aria-controls="tab-settings">設定</button>
+      <button type="button" class="tab-button" id="tab-btn-live" data-tab="live" role="tab" aria-selected="false"
+        aria-controls="tab-live">ライブビュー</button>
+    </nav>
+
+    <section id="tab-settings" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-settings">
+      <aside class="controls stack">
+        <div class="stack">
+          <label for="videoFile">元動画（MP4など）</label>
+          <input type="file" id="videoFile" accept="video/*" />
+          <div class="hint">ローカルファイルのみ。ブラウザ内で処理されます。</div>
+        </div>
+
+        <div class="stack">
+          <label for="commentsInput">コメント（CSV / TSV / JSON いずれか）</label>
+          <textarea id="commentsInput"
+            placeholder="例（CSV）：&#10;# 秒, テキスト, 色(optional), ロール(optional), 名前(optional), アイコン(optional 絵文字or URL), ピックアップ(optional true/false)&#10;0.60, みなさん準備いいですか？ 今日のセッションでは実際のライブ配信を想定して、VChatSyncでコメント同期を試します。, #7dd3ff, 司会, つな, 🎤, &#10;2.40, この視点いいですね。コメント側で解説を拾ってくれるので、後半のまとめがスムーズにできそうです。, #f6a8ff, アナリスト, 藍子, 🧠, true&#10;4.80, なるほどその機能！ ピックアップ欄があるおかげで重要なコメントを逃さずキャプチャできますね。, #ffd166, 観客, 佐藤, 🙂, yes&#10;&#10;例（JSON）：&#10;[{&quot;t&quot;:26.7,&quot;text&quot;:&quot;ここで用語メモ：「カルーセルUI」= 横スワイプや矢印操作で複数カードを切り替える表示形式。SNS広告やチャットボットで多用。&quot;,&quot;color&quot;:&quot;#7dd3ff&quot;,&quot;tag&quot;:&quot;司会&quot;,&quot;name&quot;:&quot;つな&quot;,&quot;avatar&quot;:&quot;🎤&quot;,&quot;pickup&quot;:true}]"></textarea>
+          <div class="row">
+            <button id="parseBtn">コメント読み込み</button>
+            <button id="demoBtn" title="デモ挿入">デモ挿入</button>
+          </div>
+          <div class="hint">最小指定は「t(秒), text」。色やタグ（agent種別など）は任意。ピックアップは pickup 列に true / yes などを記入。</div>
+        </div>
+
+        <div class="stack">
+          <label>オプション</label>
+          <div class="controls-row">
+            <span class="checkbox"><input type="checkbox" id="autoScroll" checked> 自動スクロールを有効にする</span>
+            <button id="jumpLive" title="再生位置の周辺へ">最新へ</button>
+          </div>
+          <div class="hint">スクロールを手で動かすと自動スクロールは一時停止します（チェックで再開）。</div>
+        </div>
+      </aside>
+    </section>
+
+    <section id="tab-live" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-live">
+      <section class="stage">
+        <div class="stage-head">
+          <div>
+            <h2>ライブビュー</h2>
+            <p class="sub">録画にも映る動画＋サイドチャットのプレビュー</p>
+          </div>
+          <span class="stage-chip">CHAT READY</span>
+        </div>
+        <div class="record-controls">
+          <div class="record-buttons">
+            <button id="recordStart">録画開始</button>
+            <button id="recordStop" disabled>録画停止</button>
+            <button id="recordSave" class="hidden" disabled>録画を保存</button>
+          </div>
+          <p id="recordStatus" class="record-status">ライブビュー領域を録画できます（未対応環境では共有画面全体）。</p>
+        </div>
+        <div class="stage-layout">
+          <div class="video-column">
+            <div class="video-head">
+              <h3 id="videoTitle" class="video-title">動画プレビュー</h3>
+              <p id="videoMeta" class="video-meta">ファイルを選択するとタイトルが表示されます。</p>
+            </div>
+            <div class="video-shell">
+              <video id="video" controls playsinline></video>
+            </div>
+            <section class="pickup-area">
+              <div class="pickup-head">
+                <h3>ピックアップ解説</h3>
+                <p class="pickup-sub">重要なコメントや用語の補足をここでチェック</p>
+              </div>
+              <div id="pickupEmpty" class="pickup-empty">ピックアップ対象のコメントはまだありません。</div>
+              <div id="pickupList" class="pickup-list"></div>
+            </section>
+          </div>
+          <div class="chat-shell">
+            <div class="chat-top">
+              <span class="chat-title">Live Discussion</span>
+              <span class="chat-status">参加者オンライン</span>
+            </div>
+            <div id="chatList" class="chat-list"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
 </body>
+
 </html>

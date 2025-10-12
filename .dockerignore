@@ -1,0 +1,6 @@
+.git
+node_modules
+certs
+scripts/generate-dev-cert.sh
+.SourceSageAssets
+.SourceSageignore

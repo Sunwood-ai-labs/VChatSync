@@ -55,3 +55,4 @@ venv
 generated-images/
 
 uv.lock
+.github/
